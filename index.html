@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Document</title>
+  <script src="./node_modules/tesseract.js/dist/tesseract.min.js"></script>
+
+  <style>
+    .preview {
+      width: 200px;
+      height: 200px;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+  </style>
+</head>
+<body>
+  <input type="file" accept="image/*" capture="camera" onchange="previewFile()" /><br /><br />
+  <div class="preview"></div>
+
+  <script>
+    const { TesseractWorker } = Tesseract;
+    const worker = new TesseractWorker();
+    const preview = document.querySelector('div');
+
+    function previewFile() {
+      const file = document.querySelector('input[type=file]').files[0];
+      const reader = new FileReader();
+
+      console.log(file.size);
+
+      reader.onloadend = async () => {
+        const orientation = await getOrientation(file);
+        preview.style.transform = 'rotate(0deg)';
+
+        switch (orientation) {
+          case 8:
+            preview.style.transform = 'rotate(-90deg)';
+            break;
+          case 3:
+            preview.style.transform = 'rotate(180deg)';
+            break;
+          case 6:
+            preview.style.transform = 'rotate(90deg)';
+            break;
+        }
+
+        preview.style.backgroundImage = `url('${reader.result}')`;
+
+        worker.recognize(reader.result)
+          .progress((info) => {
+            console.log(info);
+          })
+          .then((data) => {
+            document.body.innerHTML += data.text;
+          });
+      }
+      
+      if (!file) {
+        return preview.style.backgroundImage = '';  
+      }
+
+      reader.readAsDataURL(file);
+    }
+
+    function getOrientation(file) {
+      return new Promise(resolve => {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+
+            var view = new DataView(e.target.result);
+            if (view.getUint16(0, false) != 0xFFD8)
+            {
+                return resolve(-2);
+            }
+            var length = view.byteLength, offset = 2;
+            while (offset < length) 
+            {
+                if (view.getUint16(offset+2, false) <= 8) return resolve(-1);
+                var marker = view.getUint16(offset, false);
+                offset += 2;
+                if (marker == 0xFFE1) 
+                {
+                    if (view.getUint32(offset += 2, false) != 0x45786966) 
+                    {
+                        return resolve(-1);
+                    }
+
+                    var little = view.getUint16(offset += 6, false) == 0x4949;
+                    offset += view.getUint32(offset + 4, little);
+                    var tags = view.getUint16(offset, little);
+                    offset += 2;
+                    for (var i = 0; i < tags; i++)
+                    {
+                        if (view.getUint16(offset + (i * 12), little) == 0x0112)
+                        {
+                            return resolve(view.getUint16(offset + (i * 12) + 8, little));
+                        }
+                    }
+                }
+                else if ((marker & 0xFF00) != 0xFF00)
+                {
+                    break;
+                }
+                else
+                { 
+                    offset += view.getUint16(offset, false);
+                }
+            }
+            return resolve(-1);
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    // Reference to an output container, use 'pre' styling for JSON output
+    var output = document.createElement('pre');
+    document.body.appendChild(output);
+
+    // Reference to native method(s)
+    var oldLog = console.log;
+
+    console.log = function( ...items ) {
+
+        // Call native method first
+        oldLog.apply(this,items);
+
+        // Use JSON to transform objects, all others display normally
+        items.forEach( (item,i)=>{
+            items[i] = (typeof item === 'object' ? JSON.stringify(item,null,4) : item);
+        });
+        output.innerHTML += items.join(' ') + '<br />';
+
+    };
+
+    // You could even allow Javascript input...
+    function consoleInput( data ) {
+        // Print it to console as typed
+        console.log( data + '<br />' );
+        try {
+            console.log( eval( data ) );
+        } catch (e) {
+            console.log( e.stack );
+        }
+    }
+  </script>
+</body>
+</html>
